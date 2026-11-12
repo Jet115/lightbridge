@@ -56,9 +56,11 @@ mac:
   hardenedRuntime: true
   gatekeeperAssess: false
   darkModeSupport: true
-  # notarize: true   # einschalten, sobald Developer-ID-Zertifikat + APPLE_* Credentials
-  #                  # gesetzt sind (siehe Kopf-Kommentar). Ohne Signatur lokal auslassen,
-  #                  # damit `npm run dist:mac` ein (unsigniertes) DMG erzeugt.
+  # Notarisierung via notarytool (liest APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID).
+  # Greift NUR, wenn der Build tatsächlich signiert wurde (CSC_LINK vorhanden). Ohne Zertifikat
+  # setzt der Workflow CSC_IDENTITY_AUTO_DISCOVERY=false -> unsigniert -> Notarisierung wird
+  # automatisch übersprungen. Also sicher, auch bevor die Apple-Secrets hinterlegt sind.
+  notarize: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

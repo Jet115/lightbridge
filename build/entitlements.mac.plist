@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LightBridge — macOS Entitlements (Hardened Runtime, Developer ID, notarisiert).
+
+  Netzwerk:
+    network.client / network.server  -> Pro DJ Link (UDP/Multicast, LAN) + OS2L (TCP 127.0.0.1:5000)
+    Hinweis: Die verwaltete Multicast-Entitlement
+      com.apple.developer.networking.multicast
+    ist NUR für App-Sandbox/Mac App Store nötig und erfordert eine gesonderte
+    Apple-Freigabe. Bei Developer-ID + Hardened Runtime (kein Sandbox) genügen
+    die network.client/server-Keys für Pro-DJ-Link-Multicast.
+
+  Electron/JIT:
+    allow-jit, allow-unsigned-executable-memory und disable-library-validation
+    sind für Electron (V8 JIT, native Module) unter Hardened Runtime erforderlich.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+  </dict>
+</plist>

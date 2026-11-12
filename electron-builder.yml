@@ -1,0 +1,120 @@
+# LightBridge — electron-builder Konfiguration (Cross-Platform Packaging).
+#
+# Build-Kommandos:
+#   npm run dist:mac   -> macOS .dmg (x64 + arm64), hardened runtime + Entitlements
+#   npm run dist:win   -> Windows NSIS-Installer (x64)
+#   npm run dist       -> aktuelle Plattform
+#
+# Hinweis macOS: Für Pro DJ Link (UDP/Multicast im LAN) braucht die App die
+# Netzwerk-Entitlements in build/entitlements.mac.plist.
+#
+# Notarisierung (macOS, für Verteilung außerhalb des eigenen Rechners):
+#   export APPLE_ID="you@example.com"
+#   export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"   # App-spezifisches Passwort
+#   export APPLE_TEAM_ID="TEAMID1234"
+#   export CSC_LINK="/pfad/DeveloperIDApplication.p12"          # Developer ID Application Zertifikat
+#   export CSC_KEY_PASSWORD="zertifikat-passwort"
+#   npm run dist:mac
+# electron-builder signiert dann mit Hardened Runtime und notarisiert automatisch
+# (notarize: true unten). Ohne gültige Signatur die Notarisierung weglassen.
+
+appId: com.lightbridge.app
+productName: LightBridge
+copyright: Copyright © 2026 LightBridge
+
+directories:
+  buildResources: build
+  output: dist
+
+# electron-builder inkludiert standardmäßig **/* + Produktions-node_modules und
+# pruned devDependencies. Wir schließen nur Quell-/Config-Dateien aus, damit die
+# externalisierten Deps (prolink-connect, bonjour-service) im Paket landen.
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{tsconfig.json,tsconfig.node.json}'
+  - '!{.gitignore,.editorconfig,.prettierrc,.eslintrc.cjs,.eslintignore}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml,yarn.lock}'
+  - '!**/*.map'
+
+# Native/ESM-Deps, die nicht ins Bundle inlined sind, werden automatisch aufgelöst.
+npmRebuild: false
+
+# ---------------------------------------------------------------------------
+# macOS: Universal-DMG (x64 + arm64), Hardened Runtime + Entitlements.
+# Für ein einzelnes Universal-Binary stattdessen: arch: [universal].
+# ---------------------------------------------------------------------------
+mac:
+  category: public.app-category.music
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  darkModeSupport: true
+  # notarize: true   # einschalten, sobald Developer-ID-Zertifikat + APPLE_* Credentials
+  #                  # gesetzt sind (siehe Kopf-Kommentar). Ohne Signatur lokal auslassen,
+  #                  # damit `npm run dist:mac` ein (unsigniertes) DMG erzeugt.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    # Bonjour/mDNS-Nutzung (bonjour-service / OS2L-Discovery) auf macOS deklarieren.
+    NSLocalNetworkUsageDescription: >-
+      LightBridge kommuniziert im lokalen Netzwerk per Pro DJ Link (XDJ-AZ) und
+      OS2L, um Licht-Events an WTOOLS/Wolfmix zu senden.
+    NSBonjourServices:
+      - _os2l._tcp
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Visuelles DMG-Fenster: App links, "Programme"-Verknüpfung rechts (Drag & Drop).
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 150
+      y: 200
+      type: file
+    - x: 390
+      y: 200
+      type: link
+      path: /Applications
+  # Optional eigenes Hintergrundbild: build/background.png (540x380) ablegen.
+
+# ---------------------------------------------------------------------------
+# Windows: NSIS-Installer (x64).
+# ---------------------------------------------------------------------------
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: LightBridge
+  # Optional eigene Icons: build/icon.ico (Windows) / build/icon.icns (macOS) ablegen,
+  # dann hier installerIcon/uninstallerIcon ergänzen. Ohne Datei nutzt es das Default-Icon.
+
+# ---------------------------------------------------------------------------
+# Auto-Update-Feed: Hier liegen die Releases, von denen sich die App per
+# electron-updater selbst aktualisiert. Standard: GitHub Releases.
+# -> owner/repo anpassen. Zum Veröffentlichen GH_TOKEN (lokal) bzw. GITHUB_TOKEN
+#    (in GitHub Actions) setzen und mit `--publish always` bauen.
+# Alternative ohne GitHub: provider: generic + url (eigener HTTPS-Server, der die
+# erzeugten *.dmg/*.exe/*.yml/*.blockmap hostet).
+# ---------------------------------------------------------------------------
+publish:
+  provider: github
+  owner: Jet115
+  repo: lightbridge

@@ -1,0 +1,53 @@
+name: Release
+
+# Baut macOS- und Windows-Installer und veröffentlicht sie als GitHub Release.
+# electron-updater zieht sich daraus automatisch die neueste Version.
+# Auslösen: ein Tag wie v0.1.0 pushen  ->  git tag v0.1.0 && git push origin v0.1.0
+# (version in package.json muss zum Tag passen).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # für das Erstellen des Releases
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            ebflag: '--mac'
+          - os: windows-latest
+            ebflag: '--win'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Bundle (electron-vite)
+        run: npm run build
+
+      - name: Build & publish installer
+        run: npx electron-builder ${{ matrix.ebflag }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS-Signierung/Notarisierung (optional, als Repo-Secrets hinterlegen).
+          # Ohne diese wird unsigniert gebaut — dann funktioniert mac-Auto-Update NICHT
+          # (macOS verlangt signierte Updates); Windows-Update geht auch unsigniert.
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

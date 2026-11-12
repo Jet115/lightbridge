@@ -1,9 +1,15 @@
 name: Release
 
-# Baut macOS- und Windows-Installer und veröffentlicht sie als GitHub Release.
+# Baut macOS- und Windows-Installer und veröffentlicht sie als EIN GitHub Release.
 # electron-updater zieht sich daraus automatisch die neueste Version.
 # Auslösen: ein Tag wie v0.1.0 pushen  ->  git tag v0.1.0 && git push origin v0.1.0
 # (version in package.json muss zum Tag passen).
+#
+# Zwei Stufen, bewusst getrennt:
+#   1) build  — mac + win bauen parallel, OHNE zu publizieren (vermeidet die Race-Condition,
+#               bei der beide Matrix-Jobs gleichzeitig denselben Release anlegen wollen).
+#   2) publish — ein einziger Job sammelt alle Artefakte und erstellt genau EIN Release
+#               (inkl. latest*.yml + *.blockmap, die der Auto-Updater braucht).
 
 on:
   push:
@@ -15,7 +21,7 @@ permissions:
   contents: write   # für das Erstellen des Releases
 
 jobs:
-  release:
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -39,15 +45,63 @@ jobs:
       - name: Bundle (electron-vite)
         run: npm run build
 
-      - name: Build & publish installer
-        run: npx electron-builder ${{ matrix.ebflag }} --publish always
+      - name: Build installer (kein Publish)
+        shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS-Signierung/Notarisierung (optional, als Repo-Secrets hinterlegen).
-          # Ohne diese wird unsigniert gebaut — dann funktioniert mac-Auto-Update NICHT
-          # (macOS verlangt signierte Updates); Windows-Update geht auch unsigniert.
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          EB_FLAG: ${{ matrix.ebflag }}
+          # Signierungs-Secrets (leer, falls nicht hinterlegt). WICHTIG: NICHT direkt als
+          # CSC_LINK setzen — ein LEERES CSC_LINK deutet electron-builder als Zertifikatspfad
+          # (-> "… not a file"-Fehler auf macOS). Deshalb erst prüfen, dann bedingt exportieren.
+          IN_CSC_LINK: ${{ secrets.CSC_LINK }}
+          IN_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$IN_CSC_LINK" ]; then
+            export CSC_LINK="$IN_CSC_LINK"
+            export CSC_KEY_PASSWORD="$IN_CSC_KEY_PASSWORD"
+            echo "Code-Signing-Zertifikat gefunden — signierter Build."
+          else
+            # Kein Zertifikat -> Signierung sauber deaktivieren (sonst s. o.).
+            # Unsigniert: Windows-Update ok; mac-Auto-Update verlangt Signierung/Notarisierung.
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "Kein Zertifikat hinterlegt — unsignierter Build."
+          fi
+          npx electron-builder "$EB_FLAG" --publish never
+
+      - name: Artefakte hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.zip
+            dist/*.blockmap
+            dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Artefakte einsammeln
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: GitHub Release veröffentlichen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          echo "Dateien im Release:"
+          ls -la artifacts
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "Automatischer Release ${GITHUB_REF_NAME} (macOS + Windows)." \
+            artifacts/*
